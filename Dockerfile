@@ -17,4 +17,5 @@ RUN /usr/sbin/update-ca-certificates
 
 COPY --from=builder /usr/local/cargo/bin/* ./
 
-CMD ['./service']
+CMD ["./service"]
+
