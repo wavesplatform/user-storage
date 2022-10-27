@@ -5,7 +5,7 @@ fn default_pgport() -> u16 {
     5432
 }
 
-fn default_pg_pool_size() -> u8 {
+fn default_pg_poolsize() -> u8 {
     4
 }
 
@@ -17,8 +17,8 @@ struct ConfigFlat {
     database: String,
     user: String,
     password: String,
-    #[serde(default = "default_pg_pool_size")]
-    pool_size: u8,
+    #[serde(default = "default_pg_poolsize")]
+    poolsize: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ pub struct Config {
     pub database: String,
     pub user: String,
     pub password: String,
-    pub pool_size: u8,
+    pub poolsize: u8,
 }
 
 pub fn load() -> Result<Config, Error> {
@@ -40,6 +40,6 @@ pub fn load() -> Result<Config, Error> {
         user: config_flat.user,
         database: config_flat.database,
         password: config_flat.password,
-        pool_size: config_flat.pool_size,
+        poolsize: config_flat.poolsize,
     })
 }
