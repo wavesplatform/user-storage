@@ -2,14 +2,14 @@ use diesel::migration::Migration;
 use diesel::{migration, pg::PgConnection, Connection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
-use lib::config;
+use lib::{config, db::generate_postgres_url};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 fn main() -> anyhow::Result<()> {
     let action = action::parse_command_line()?;
     let dbconfig = config::postgres::load()?;
-    let conn = PgConnection::establish(&dbconfig.host)?;
+    let conn = PgConnection::establish(&generate_postgres_url(&dbconfig))?;
     run(action, conn).map_err(|e| anyhow::anyhow!(e))
 }
 
