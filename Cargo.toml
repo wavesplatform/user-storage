@@ -28,8 +28,8 @@ name = "lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "api"
-path = "src/bin/api.rs"
+name = "service"
+path = "src/bin/service.rs"
 
 
 [[bin]]
