@@ -1,10 +1,7 @@
-pub mod dtos;
-
-use self::dtos::{EntriesList, Entry, KeysRequest};
 use crate::error::Error;
+use crate::models::dto::{EntriesList, Entry, KeysRequest};
 use crate::repo::Repo;
 use serde::Serialize;
-use std::iter::zip;
 use std::sync::Arc;
 use warp::{
     http::StatusCode,
@@ -117,20 +114,32 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo + Send 
 }
 
 mod controllers {
-    use super::dtos::KeyEntryPair;
     use super::*;
+    use crate::models::dto::KeyEntryPair;
+    use std::collections::HashMap;
 
     pub(super) async fn get_entries<R: Repo>(
         keys: KeysRequest,
         repo: Arc<R>,
     ) -> Result<EntriesList, Rejection> {
-        let key_refs = keys.keys.iter().map(AsRef::as_ref).collect::<Vec<_>>();
-        let entries = repo.mget(&key_refs).await?;
+        let keys = keys.keys;
+        let mut entries: HashMap<String, Entry> = {
+            let raw_entries = repo.mget(&keys).await?;
+            HashMap::from_iter(
+                raw_entries
+                    .into_iter()
+                    .map(|e| (e.key.clone(), Entry::from(e))),
+            )
+        };
 
         Ok(EntriesList {
-            entries: zip(keys.keys, entries)
-                .map(|(key, entry)| match &entry {
-                    Some(_) => Some(KeyEntryPair { key, entry }),
+            entries: keys
+                .into_iter()
+                .map(|key| match entries.remove(&key) {
+                    Some(entry) => Some(KeyEntryPair {
+                        key,
+                        entry: Some(entry),
+                    }),
                     None => None,
                 })
                 .collect(),
@@ -141,42 +150,38 @@ mod controllers {
         entries: EntriesList,
         repo: Arc<R>,
     ) -> Result<EntriesList, Rejection> {
-        let key_entry_pairs: Vec<(&str, Option<&Entry>)> = entries
+        let key_entry_pairs: Vec<(String, Option<Entry>)> = entries
             .entries
-            .iter()
-            .filter_map(|entry| {
-                entry
-                    .as_ref()
-                    .map(|pair| (pair.key.as_str(), pair.entry.as_ref()))
-            })
+            .into_iter()
+            .filter_map(|entry| entry.map(|pair| (pair.key, pair.entry)))
             .collect();
 
         let keys = key_entry_pairs
             .iter()
-            .map(|pair| pair.0.to_string())
+            .map(|pair| pair.0.clone())
             .collect::<Vec<_>>();
+
+        let old_entries = get_entries(KeysRequest { keys }, repo.clone()).await?;
 
         let keys_to_delete = key_entry_pairs
             .iter()
             .filter_map(|pair| match pair.1 {
                 Some(_) => None,
-                None => Some(pair.0),
+                None => Some(&pair.0),
             })
             .collect::<Vec<_>>();
 
+        if !keys_to_delete.is_empty() {
+            repo.mdel(&keys_to_delete).await?;
+        }
+
         let pairs_to_update = key_entry_pairs
-            .iter()
+            .into_iter()
             .filter_map(|pair| pair.1.map(|entry| (pair.0, entry)))
             .collect::<Vec<_>>();
 
-        let old_entries = get_entries(KeysRequest { keys }, repo.clone()).await?;
-
         if !pairs_to_update.is_empty() {
             repo.mset(&pairs_to_update).await?;
-        }
-
-        if !keys_to_delete.is_empty() {
-            repo.del(&keys_to_delete).await?;
         }
 
         Ok(old_entries)
@@ -186,10 +191,9 @@ mod controllers {
         keys: KeysRequest,
         repo: Arc<R>,
     ) -> Result<EntriesList, Rejection> {
-        let key_refs = keys.keys.iter().map(AsRef::as_ref).collect::<Vec<_>>();
         let old_entries = get_entries(keys.clone(), repo.clone()).await?;
 
-        repo.del(&key_refs).await?;
+        repo.mdel(&keys.keys).await?;
 
         Ok(old_entries)
     }
@@ -198,7 +202,10 @@ mod controllers {
         key: String,
         repo: Arc<R>,
     ) -> Result<Entry, Rejection> {
-        repo.get(&key).await?.ok_or(Error::KeyNotFound(key).into())
+        repo.get(&key)
+            .await?
+            .ok_or(Error::KeyNotFound(key).into())
+            .map(Entry::from)
     }
 
     pub(super) async fn set_single_entry<R: Repo>(
@@ -206,9 +213,9 @@ mod controllers {
         entry: Entry,
         repo: Arc<R>,
     ) -> Result<Option<Entry>, Rejection> {
-        let old_entry = repo.get(&key).await?;
+        let old_entry = repo.get(&key).await?.map(Entry::from);
 
-        repo.set(&key, &entry).await?;
+        repo.set(key, entry).await?;
 
         Ok(old_entry)
     }
@@ -219,7 +226,7 @@ mod controllers {
     ) -> Result<Entry, Rejection> {
         let old_entry = get_single_entry(key.clone(), repo.clone()).await?;
 
-        repo.del(&[&key]).await?;
+        repo.mdel(&[key]).await?;
 
         Ok(old_entry)
     }

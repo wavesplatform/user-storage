@@ -1,17 +1,17 @@
 pub mod api;
-pub mod redis;
+pub mod postgres;
 
 use crate::error::Error;
 
 #[derive(Debug)]
 pub struct Config {
     pub api: api::Config,
-    pub redis: redis::Config,
+    pub pg: postgres::Config,
 }
 
 pub fn load() -> Result<Config, Error> {
     Ok(Config {
         api: api::load()?,
-        redis: redis::load()?,
+        pg: postgres::load()?,
     })
 }
