@@ -5,7 +5,10 @@ use wavesexchange_log::info;
 async fn main() -> Result<(), Error> {
     let config = config::load()?;
 
-    info!("Starting user-storage service with config: {:?}", config);
+    info!(
+        "Starting user-storage service with config: {:?}",
+        config.api
+    );
 
     let pg_pool = db::async_pool(&config.pg).await?;
     let storage_repo = repo::postgres::new(pg_pool);
