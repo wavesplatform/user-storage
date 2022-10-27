@@ -7,9 +7,11 @@ authors = ["Artem Sidorenko <kronos44_0@mail.ru>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.66"
 async-trait = "0.1.58"
 deadpool-diesel = "0.4.0"
 diesel = { version = "2.0.2", features = ["postgres", "serde_json"] }
+diesel_migrations = { version = "2.0.0", features = ["postgres"] }
 envy = "0.4.2"
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0.87"
@@ -20,6 +22,16 @@ warp = "0.3.3"
 wavesexchange_log = { git = "https://github.com/waves-exchange/wavesexchange-rs", tag = "wavesexchange_log/0.5.0" }
 wavesexchange_warp = { git = "https://github.com/waves-exchange/wavesexchange-rs", tag = "wavesexchange_warp/0.14.1" }
 
+
+[lib]
+name = "lib"
+path = "src/lib.rs"
+
 [[bin]]
-name = "service"
-path = "src/main.rs"
+name = "api"
+path = "src/bin/api.rs"
+
+
+[[bin]]
+name = "migrate"
+path = "src/bin/migration.rs"

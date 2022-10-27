@@ -1,18 +1,8 @@
+use lib::{api, config, db, error::Error, repo};
 use wavesexchange_log::info;
 
-mod api;
-mod config;
-mod db;
-mod error;
-mod models;
-mod repo;
-mod schema;
-
-#[macro_use]
-extern crate async_trait;
-
 #[tokio::main]
-async fn main() -> Result<(), error::Error> {
+async fn main() -> Result<(), Error> {
     let config = config::load()?;
 
     info!("Starting user-storage service with config: {:?}", config);
