@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::models::dto::{EntriesList, Entry, KeysRequest};
+use crate::models::dto::{Entry, KeyEntryList, KeyList, NullableEntryList};
 use crate::repo::Repo;
 use serde::Serialize;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use wavesexchange_warp::MetricsWarpBuilder;
 
 const ERROR_CODES_PREFIX: u16 = 95;
 
-pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo + Send + Sync + 'static) {
+pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let error_handler = handler(ERROR_CODES_PREFIX, |err| match err {
         Error::ValidationError(field, error_details) => {
             let mut error_details = error_details.to_owned();
@@ -32,36 +32,37 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo + Send 
     });
 
     let qs_config = create_serde_qs_config();
+    let path_prefix = warp::path!("storage" / ..);
 
     let with_user_storage = {
         let storage = Arc::new(user_storage);
         warp::any().map(move || storage.clone())
     };
 
-    let get_entries = warp::get()
-        .and(warp::path::end())
-        .and(serde_qs::warp::query::<KeysRequest>(qs_config))
+    let get_entries = warp::path::end()
+        .and(warp::get())
+        .and(serde_qs::warp::query::<KeyList>(qs_config))
         .and(with_user_storage.clone())
         .and_then(controllers::get_entries)
         .map(to_json);
 
-    let get_entries_post = warp::post()
-        .and(warp::path::end())
-        .and(warp::body::json::<KeysRequest>())
+    let get_entries_post = warp::path::end()
+        .and(warp::post())
+        .and(warp::body::json::<KeyList>())
         .and(with_user_storage.clone())
         .and_then(controllers::get_entries)
         .map(to_json);
 
-    let set_entries = warp::put()
-        .and(warp::path::end())
-        .and(warp::body::json::<EntriesList>())
+    let set_entries = warp::path::end()
+        .and(warp::put())
+        .and(warp::body::json::<KeyEntryList>())
         .and(with_user_storage.clone())
         .and_then(controllers::set_entries)
         .map(to_json);
 
-    let delete_entries = warp::delete()
-        .and(warp::path::end())
-        .and(warp::body::json::<KeysRequest>())
+    let delete_entries = warp::path::end()
+        .and(warp::delete())
+        .and(warp::body::json::<KeyList>())
         .and(with_user_storage.clone())
         .and_then(controllers::delete_entries)
         .map(to_json);
@@ -92,13 +93,16 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo + Send 
 
     info!("Starting API server at 0.0.0.0:{}", port);
 
-    let routes = get_entries
-        .or(get_entries_post)
-        .or(set_entries)
-        .or(delete_entries)
-        .or(get_single_entry)
-        .or(set_single_entry)
-        .or(delete_single_entry)
+    let routes = path_prefix
+        .and(
+            get_entries
+                .or(get_entries_post)
+                .or(set_entries)
+                .or(delete_entries)
+                .or(get_single_entry)
+                .or(set_single_entry)
+                .or(delete_single_entry),
+        )
         .recover(move |rej| {
             error!("{:?}", rej);
             error_handler_with_serde_qs(ERROR_CODES_PREFIX, error_handler.clone())(rej)
@@ -114,17 +118,22 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo + Send 
 }
 
 mod controllers {
+    //use wavesexchange_log::debug;
+
+    use crate::models::UserStorageEntry;
+    use crate::repo::RepoOperations;
+
     use super::*;
-    use crate::models::dto::KeyEntryPair;
     use std::collections::HashMap;
 
     pub(super) async fn get_entries<R: Repo>(
-        keys: KeysRequest,
+        keys: KeyList,
         repo: Arc<R>,
-    ) -> Result<EntriesList, Rejection> {
+    ) -> Result<NullableEntryList, Rejection> {
         let keys = keys.keys;
+        let search_keys = keys.clone();
         let mut entries: HashMap<String, Entry> = {
-            let raw_entries = repo.mget(&keys).await?;
+            let raw_entries = repo.interact(move |ops| ops.mget(&search_keys)).await?;
             HashMap::from_iter(
                 raw_entries
                     .into_iter()
@@ -132,28 +141,19 @@ mod controllers {
             )
         };
 
-        Ok(EntriesList {
-            entries: keys
-                .into_iter()
-                .map(|key| match entries.remove(&key) {
-                    Some(entry) => Some(KeyEntryPair {
-                        key,
-                        entry: Some(entry),
-                    }),
-                    None => None,
-                })
-                .collect(),
+        Ok(NullableEntryList {
+            entries: keys.into_iter().map(|key| entries.remove(&key)).collect(),
         })
     }
 
     pub(super) async fn set_entries<R: Repo>(
-        entries: EntriesList,
+        entries: KeyEntryList,
         repo: Arc<R>,
-    ) -> Result<EntriesList, Rejection> {
+    ) -> Result<NullableEntryList, Rejection> {
         let key_entry_pairs: Vec<(String, Option<Entry>)> = entries
             .entries
             .into_iter()
-            .filter_map(|entry| entry.map(|pair| (pair.key, pair.entry)))
+            .map(|pair| (pair.key, pair.entry))
             .collect();
 
         let keys = key_entry_pairs
@@ -161,39 +161,47 @@ mod controllers {
             .map(|pair| pair.0.clone())
             .collect::<Vec<_>>();
 
-        let old_entries = get_entries(KeysRequest { keys }, repo.clone()).await?;
+        let old_entries = get_entries(KeyList { keys }, repo.clone()).await?;
 
         let keys_to_delete = key_entry_pairs
             .iter()
             .filter_map(|pair| match pair.1 {
                 Some(_) => None,
-                None => Some(&pair.0),
+                None => Some(pair.0.clone()),
             })
             .collect::<Vec<_>>();
-
-        if !keys_to_delete.is_empty() {
-            repo.mdel(&keys_to_delete).await?;
-        }
 
         let pairs_to_update = key_entry_pairs
             .into_iter()
             .filter_map(|pair| pair.1.map(|entry| (pair.0, entry)))
             .collect::<Vec<_>>();
 
-        if !pairs_to_update.is_empty() {
-            repo.mset(&pairs_to_update).await?;
-        }
+        repo.transaction(move |ops| {
+            if !keys_to_delete.is_empty() {
+                ops.mdel(&keys_to_delete)?;
+            }
+
+            if !pairs_to_update.is_empty() {
+                let entries_to_update = pairs_to_update
+                    .into_iter()
+                    .map(|(key, entry)| UserStorageEntry::from((key, entry)))
+                    .collect::<Vec<_>>();
+                ops.mset(&entries_to_update)?;
+            }
+            Ok(())
+        })
+        .await?;
 
         Ok(old_entries)
     }
 
     pub(super) async fn delete_entries<R: Repo>(
-        keys: KeysRequest,
+        keys: KeyList,
         repo: Arc<R>,
-    ) -> Result<EntriesList, Rejection> {
+    ) -> Result<NullableEntryList, Rejection> {
         let old_entries = get_entries(keys.clone(), repo.clone()).await?;
 
-        repo.mdel(&keys.keys).await?;
+        repo.interact(move |ops| ops.mdel(&keys.keys)).await?;
 
         Ok(old_entries)
     }
@@ -202,10 +210,15 @@ mod controllers {
         key: String,
         repo: Arc<R>,
     ) -> Result<Entry, Rejection> {
-        repo.get(&key)
-            .await?
-            .ok_or(Error::KeyNotFound(key).into())
-            .map(Entry::from)
+        let entry = repo
+            .interact(|ops| {
+                ops.get(&key)?
+                    .ok_or(Error::KeyNotFound(key))
+                    .map(Entry::from)
+            })
+            .await?;
+
+        Ok(entry)
     }
 
     pub(super) async fn set_single_entry<R: Repo>(
@@ -213,11 +226,18 @@ mod controllers {
         entry: Entry,
         repo: Arc<R>,
     ) -> Result<Option<Entry>, Rejection> {
-        let old_entry = repo.get(&key).await?.map(Entry::from);
+        let entry = repo
+            .interact(|ops| {
+                let old_entry = ops.get(&key)?.map(Entry::from);
 
-        repo.set(key, entry).await?;
+                let entry = UserStorageEntry::from((key, entry));
+                ops.set(&entry)?;
 
-        Ok(old_entry)
+                Ok(old_entry)
+            })
+            .await?;
+
+        Ok(entry)
     }
 
     pub(super) async fn delete_single_entry<R: Repo>(
@@ -226,7 +246,7 @@ mod controllers {
     ) -> Result<Entry, Rejection> {
         let old_entry = get_single_entry(key.clone(), repo.clone()).await?;
 
-        repo.mdel(&[key]).await?;
+        repo.interact(|ops| ops.mdel(&[key])).await?;
 
         Ok(old_entry)
     }

@@ -1,8 +1,8 @@
 use crate::schema::user_storage;
-use diesel::{Identifiable, Insertable, Queryable};
+use diesel::{AsChangeset, Identifiable, Insertable, Queryable};
 use serde_json::Value;
 
-#[derive(Insertable, Queryable, Identifiable)]
+#[derive(Insertable, Queryable, Identifiable, AsChangeset)]
 #[diesel(table_name = user_storage)]
 #[diesel(primary_key(key))]
 pub struct UserStorageEntry {
@@ -20,8 +20,13 @@ pub mod dto {
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct EntriesList {
-        pub entries: Vec<Option<KeyEntryPair>>,
+    pub struct KeyEntryList {
+        pub entries: Vec<KeyEntryPair>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct NullableEntryList {
+        pub entries: Vec<Option<Entry>>,
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,7 +47,7 @@ pub mod dto {
     }
 
     #[derive(Clone, Debug, Deserialize)]
-    pub struct KeysRequest {
+    pub struct KeyList {
         pub keys: Vec<String>,
     }
 }
