@@ -67,13 +67,13 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
         .and_then(controllers::delete_entries)
         .map(to_json);
 
-    let get_single_entry = warp::path!("key" / String)
+    let get_single_entry = warp::path::param::<String>()
         .and(warp::get())
         .and(with_user_storage.clone())
         .and_then(controllers::get_single_entry)
         .map(to_json);
 
-    let set_single_entry = warp::path!("key" / String)
+    let set_single_entry = warp::path::param::<String>()
         .and(warp::put())
         .and(warp::body::json::<Entry>())
         .and(with_user_storage.clone())
@@ -83,7 +83,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
             None => with_status(reply(), StatusCode::CREATED).into_response(),
         });
 
-    let delete_single_entry = warp::path!("key" / String)
+    let delete_single_entry = warp::path::param::<String>()
         .and(warp::delete())
         .and(with_user_storage.clone())
         .and_then(controllers::delete_single_entry)
