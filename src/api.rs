@@ -3,6 +3,7 @@ use crate::models::dto::{Entry, KeyEntryList, KeyList, NullableEntryList};
 use crate::repo::Repo;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use warp::{
     http::StatusCode,
@@ -18,6 +19,7 @@ use wavesexchange_warp::log::access;
 use wavesexchange_warp::MetricsWarpBuilder;
 
 const ERROR_CODES_PREFIX: u16 = 95;
+const MAX_JSON_PAYLOAD_SIZE: u64 = 1024 * 1024 * 1024;
 
 pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let error_handler = handler(ERROR_CODES_PREFIX, |err| match err {
@@ -42,10 +44,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
             .and_then(|claim: Vec<u8>| serde_json::from_slice::<Value>(&claim).ok())
             .and_then(|val: Value| val.get("a").and_then(|a| a.as_str().map(|s| s.to_owned())))
             .ok_or_else(|| {
-                reject::custom(Error::ValidationError(
-                    "JWT parsing error".to_string(),
-                    None,
-                ))
+                reject::custom(Error::ValidationError("Authorization".to_string(), None))
             })
     });
 
@@ -182,6 +181,12 @@ mod controllers {
             .map(|pair| (pair.key, pair.entry))
             .collect();
 
+        for (key, entry) in &key_entry_pairs {
+            if let Some(e) = entry {
+                validate_entry(&key, e)?;
+            }
+        }
+
         let keys = key_entry_pairs
             .iter()
             .map(|pair| pair.0.clone())
@@ -256,6 +261,7 @@ mod controllers {
         user_addr: String,
         repo: Arc<R>,
     ) -> Result<Option<Entry>, Rejection> {
+        validate_entry(&key, &entry)?;
         let entry = repo
             .interact(move |ops| {
                 let old_entry = ops.get(&user_addr, &key)?.map(Entry::from);
@@ -282,6 +288,29 @@ mod controllers {
 
         Ok(old_entry)
     }
+}
+
+fn validate_entry(key: &str, entry: &Entry) -> Result<(), Rejection> {
+    let rej = |size: u64| {
+        reject::custom(Error::ValidationError(
+            key.to_string(),
+            Some(HashMap::from([
+                ("actual_size".to_string(), size.to_string()),
+                ("max_size".to_string(), MAX_JSON_PAYLOAD_SIZE.to_string()),
+            ])),
+        ))
+    };
+
+    match entry {
+        Entry::Json(d) => {
+            let payload_size = serde_json::to_vec(d).unwrap().len() as u64;
+            if payload_size > MAX_JSON_PAYLOAD_SIZE {
+                return Err(rej(payload_size));
+            }
+        }
+        _ => (),
+    }
+    Ok(())
 }
 
 fn to_json<T: Serialize>(data: T) -> Json {
