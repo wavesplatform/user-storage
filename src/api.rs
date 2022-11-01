@@ -2,9 +2,11 @@ use crate::error::Error;
 use crate::models::dto::{Entry, KeyEntryList, KeyList, NullableEntryList};
 use crate::repo::Repo;
 use serde::Serialize;
+use serde_json::Value;
 use std::sync::Arc;
 use warp::{
     http::StatusCode,
+    reject,
     reply::{json, reply, with_status, Json, Reply},
     Filter, Rejection,
 };
@@ -33,6 +35,19 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
 
     let qs_config = create_serde_qs_config();
     let path_prefix = warp::path!("storage" / ..);
+    let user_addr = warp::header::<String>("Authorization").and_then(|jwt: String| async move {
+        jwt.split('.')
+            .nth(1)
+            .and_then(|s: &str| base64::decode(s).ok())
+            .and_then(|claim: Vec<u8>| serde_json::from_slice::<Value>(&claim).ok())
+            .and_then(|val: Value| val.get("a").and_then(|a| a.as_str().map(|s| s.to_owned())))
+            .ok_or_else(|| {
+                reject::custom(Error::ValidationError(
+                    "JWT parsing error".to_string(),
+                    None,
+                ))
+            })
+    });
 
     let with_user_storage = {
         let storage = Arc::new(user_storage);
@@ -42,6 +57,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let get_entries = warp::path::end()
         .and(warp::get())
         .and(serde_qs::warp::query::<KeyList>(qs_config))
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::get_entries)
         .map(to_json);
@@ -49,6 +65,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let get_entries_post = warp::path::end()
         .and(warp::post())
         .and(warp::body::json::<KeyList>())
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::get_entries)
         .map(to_json);
@@ -56,6 +73,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let set_entries = warp::path::end()
         .and(warp::put())
         .and(warp::body::json::<KeyEntryList>())
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::set_entries)
         .map(to_json);
@@ -63,12 +81,14 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let delete_entries = warp::path::end()
         .and(warp::delete())
         .and(warp::body::json::<KeyList>())
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::delete_entries)
         .map(to_json);
 
     let get_single_entry = warp::path::param::<String>()
         .and(warp::get())
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::get_single_entry)
         .map(to_json);
@@ -76,6 +96,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
     let set_single_entry = warp::path::param::<String>()
         .and(warp::put())
         .and(warp::body::json::<Entry>())
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::set_single_entry)
         .map(|result: Option<Entry>| match result {
@@ -85,6 +106,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
 
     let delete_single_entry = warp::path::param::<String>()
         .and(warp::delete())
+        .and(user_addr)
         .and(with_user_storage.clone())
         .and_then(controllers::delete_single_entry)
         .map(to_json);
@@ -128,12 +150,15 @@ mod controllers {
 
     pub(super) async fn get_entries<R: Repo>(
         keys: KeyList,
+        user_addr: String,
         repo: Arc<R>,
     ) -> Result<NullableEntryList, Rejection> {
         let keys = keys.keys;
         let search_keys = keys.clone();
         let mut entries: HashMap<String, Entry> = {
-            let raw_entries = repo.interact(move |ops| ops.mget(&search_keys)).await?;
+            let raw_entries = repo
+                .interact(move |ops| ops.mget(&user_addr, &search_keys))
+                .await?;
             HashMap::from_iter(
                 raw_entries
                     .into_iter()
@@ -148,6 +173,7 @@ mod controllers {
 
     pub(super) async fn set_entries<R: Repo>(
         entries: KeyEntryList,
+        user_addr: String,
         repo: Arc<R>,
     ) -> Result<NullableEntryList, Rejection> {
         let key_entry_pairs: Vec<(String, Option<Entry>)> = entries
@@ -161,7 +187,7 @@ mod controllers {
             .map(|pair| pair.0.clone())
             .collect::<Vec<_>>();
 
-        let old_entries = get_entries(KeyList { keys }, repo.clone()).await?;
+        let old_entries = get_entries(KeyList { keys }, user_addr.clone(), repo.clone()).await?;
 
         let keys_to_delete = key_entry_pairs
             .iter()
@@ -178,13 +204,13 @@ mod controllers {
 
         repo.transaction(move |ops| {
             if !keys_to_delete.is_empty() {
-                ops.mdel(&keys_to_delete)?;
+                ops.mdel(&user_addr, &keys_to_delete)?;
             }
 
             if !pairs_to_update.is_empty() {
                 let entries_to_update = pairs_to_update
                     .into_iter()
-                    .map(|(key, entry)| UserStorageEntry::from((key, entry)))
+                    .map(|(key, entry)| UserStorageEntry::from((user_addr.clone(), key, entry)))
                     .collect::<Vec<_>>();
                 ops.mset(&entries_to_update)?;
             }
@@ -197,22 +223,25 @@ mod controllers {
 
     pub(super) async fn delete_entries<R: Repo>(
         keys: KeyList,
+        user_addr: String,
         repo: Arc<R>,
     ) -> Result<NullableEntryList, Rejection> {
-        let old_entries = get_entries(keys.clone(), repo.clone()).await?;
+        let old_entries = get_entries(keys.clone(), user_addr.clone(), repo.clone()).await?;
 
-        repo.interact(move |ops| ops.mdel(&keys.keys)).await?;
+        repo.interact(move |ops| ops.mdel(&user_addr, &keys.keys))
+            .await?;
 
         Ok(old_entries)
     }
 
     pub(super) async fn get_single_entry<R: Repo>(
         key: String,
+        user_addr: String,
         repo: Arc<R>,
     ) -> Result<Entry, Rejection> {
         let entry = repo
-            .interact(|ops| {
-                ops.get(&key)?
+            .interact(move |ops| {
+                ops.get(&user_addr, &key)?
                     .ok_or(Error::KeyNotFound(key))
                     .map(Entry::from)
             })
@@ -224,13 +253,14 @@ mod controllers {
     pub(super) async fn set_single_entry<R: Repo>(
         key: String,
         entry: Entry,
+        user_addr: String,
         repo: Arc<R>,
     ) -> Result<Option<Entry>, Rejection> {
         let entry = repo
-            .interact(|ops| {
-                let old_entry = ops.get(&key)?.map(Entry::from);
+            .interact(move |ops| {
+                let old_entry = ops.get(&user_addr, &key)?.map(Entry::from);
 
-                let entry = UserStorageEntry::from((key, entry));
+                let entry = UserStorageEntry::from((user_addr.clone(), key, entry));
                 ops.set(&entry)?;
 
                 Ok(old_entry)
@@ -242,11 +272,13 @@ mod controllers {
 
     pub(super) async fn delete_single_entry<R: Repo>(
         key: String,
+        user_addr: String,
         repo: Arc<R>,
     ) -> Result<Entry, Rejection> {
-        let old_entry = get_single_entry(key.clone(), repo.clone()).await?;
+        let old_entry = get_single_entry(key.clone(), user_addr.clone(), repo.clone()).await?;
 
-        repo.interact(|ops| ops.mdel(&[key])).await?;
+        repo.interact(move |ops| ops.mdel(&user_addr, &[key]))
+            .await?;
 
         Ok(old_entry)
     }

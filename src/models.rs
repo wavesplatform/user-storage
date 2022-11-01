@@ -1,12 +1,16 @@
-use crate::schema::user_storage;
+use crate::schema::*;
 use diesel::{AsChangeset, Identifiable, Insertable, Queryable};
 use serde_json::Value;
 
+pub type Key = String;
+pub type UserAddress = String;
+
 #[derive(Insertable, Queryable, Identifiable, AsChangeset)]
 #[diesel(table_name = user_storage)]
-#[diesel(primary_key(key))]
+#[diesel(primary_key(key, user_addr))]
 pub struct UserStorageEntry {
-    pub key: String,
+    pub key: Key,
+    pub user_addr: UserAddress,
     pub entry_type: String,
     pub entry_value_binary: Option<String>, //b58
     pub entry_value_boolean: Option<bool>,
@@ -16,7 +20,7 @@ pub struct UserStorageEntry {
 }
 
 pub mod dto {
-    use super::Value;
+    use super::*;
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,7 +35,7 @@ pub mod dto {
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct KeyEntryPair {
-        pub key: String,
+        pub key: Key,
         pub entry: Option<Entry>,
     }
 
@@ -48,7 +52,7 @@ pub mod dto {
 
     #[derive(Clone, Debug, Deserialize)]
     pub struct KeyList {
-        pub keys: Vec<String>,
+        pub keys: Vec<Key>,
     }
 }
 
@@ -65,11 +69,12 @@ impl From<UserStorageEntry> for dto::Entry {
     }
 }
 
-impl From<(String, dto::Entry)> for UserStorageEntry {
-    fn from((key, entry): (String, dto::Entry)) -> Self {
+impl From<(UserAddress, Key, dto::Entry)> for UserStorageEntry {
+    fn from((user_addr, key, entry): (UserAddress, Key, dto::Entry)) -> Self {
         match entry {
             dto::Entry::Binary(val) => UserStorageEntry {
                 key,
+                user_addr,
                 entry_type: String::from("binary"),
                 entry_value_binary: Some(val),
                 entry_value_boolean: None,
@@ -79,6 +84,7 @@ impl From<(String, dto::Entry)> for UserStorageEntry {
             },
             dto::Entry::Boolean(val) => UserStorageEntry {
                 key,
+                user_addr,
                 entry_type: String::from("boolean"),
                 entry_value_binary: None,
                 entry_value_boolean: Some(val),
@@ -88,6 +94,7 @@ impl From<(String, dto::Entry)> for UserStorageEntry {
             },
             dto::Entry::Integer(val) => UserStorageEntry {
                 key,
+                user_addr,
                 entry_type: String::from("integer"),
                 entry_value_binary: None,
                 entry_value_boolean: None,
@@ -97,6 +104,7 @@ impl From<(String, dto::Entry)> for UserStorageEntry {
             },
             dto::Entry::Json(val) => UserStorageEntry {
                 key,
+                user_addr,
                 entry_type: String::from("json"),
                 entry_value_binary: None,
                 entry_value_boolean: None,
@@ -106,6 +114,7 @@ impl From<(String, dto::Entry)> for UserStorageEntry {
             },
             dto::Entry::String(val) => UserStorageEntry {
                 key,
+                user_addr,
                 entry_type: String::from("string"),
                 entry_value_binary: None,
                 entry_value_boolean: None,

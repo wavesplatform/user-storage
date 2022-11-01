@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS user_storage (
     key TEXT NOT NULL,
+    user_addr TEXT NOT NULL,
     entry_type TEXT NOT NULL CHECK(entry_type IN ('binary', 'boolean', 'integer', 'json', 'string')),
     entry_value_binary TEXT,
     entry_value_boolean BOOLEAN,
@@ -7,5 +8,5 @@ CREATE TABLE IF NOT EXISTS user_storage (
     entry_value_json JSONB,
     entry_value_string TEXT,
 
-    PRIMARY KEY (key)
+    PRIMARY KEY (key, user_addr)
 )
