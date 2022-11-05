@@ -20,8 +20,8 @@ serde_qs = { version = "0.10.1", features = ["warp"] }
 thiserror = "1.0.37"
 tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros"] }
 warp = "0.3.3"
-wavesexchange_log = { git = "https://github.com/waves-exchange/wavesexchange-rs", tag = "wavesexchange_log/0.5.0" }
-wavesexchange_warp = { git = "https://github.com/waves-exchange/wavesexchange-rs", tag = "wavesexchange_warp/0.14.1" }
+wavesexchange_log = { git = "https://github.com/waves-exchange/wavesexchange-rs", tag = "wavesexchange_log/0.5.1" }
+wavesexchange_warp = { git = "https://github.com/waves-exchange/wavesexchange-rs", tag = "wavesexchange_warp/0.14.3" }
 
 
 [lib]

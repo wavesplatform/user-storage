@@ -35,7 +35,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
         _ => internal(ERROR_CODES_PREFIX),
     });
 
-    let qs_config = create_serde_qs_config();
+    let qs_config = serde_qs::Config::new(5, false);
     let path_prefix = warp::path!("storage" / ..);
     let user_addr = warp::header::<String>("Authorization").and_then(|jwt: String| async move {
         jwt.split('.')
@@ -134,7 +134,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
         .with_main_routes(routes)
         .with_main_routes_port(port)
         .with_metrics_port(metrics_port)
-        .run_blocking()
+        .run_async()
         .await;
 }
 
@@ -315,8 +315,4 @@ fn validate_entry(key: &str, entry: &Entry) -> Result<(), Rejection> {
 
 fn to_json<T: Serialize>(data: T) -> Json {
     json(&data)
-}
-
-fn create_serde_qs_config() -> serde_qs::Config {
-    serde_qs::Config::new(5, false)
 }
