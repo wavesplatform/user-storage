@@ -9,4 +9,6 @@ CREATE TABLE IF NOT EXISTS user_storage (
     entry_value_string TEXT,
 
     PRIMARY KEY (key, user_addr)
-)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_storage_key_user_addr_idx ON user_storage (key, user_addr);

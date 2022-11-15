@@ -14,7 +14,7 @@ pub fn generate_postgres_url(config: &Config) -> String {
     )
 }
 
-pub async fn async_pool(config: &Config) -> Result<PgAsyncPool, Error> {
+pub fn async_pool(config: &Config) -> Result<PgAsyncPool, Error> {
     let db_url = generate_postgres_url(config);
 
     let manager = DManager::new(db_url, Runtime::Tokio1);
