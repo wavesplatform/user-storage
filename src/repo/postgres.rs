@@ -4,9 +4,10 @@ use crate::error::Error;
 use crate::models::{UserAddress, UserStorageEntry};
 use crate::schema::*;
 use diesel::{prelude::*, upsert::excluded, PgConnection};
+use wavesexchange_repos::CircuitBreaker;
 
 pub struct PgRepo {
-    pool: PgAsyncPool,
+    circuit_breaker: CircuitBreaker<PgAsyncPool>,
 }
 
 #[async_trait]
@@ -16,28 +17,36 @@ impl Repo for PgRepo {
     async fn interact<F, R>(&self, f: F) -> Result<R, Error>
     where
         F: FnOnce(&mut Self::Operations) -> Result<R, Error>,
-        F: Send + 'static,
-        R: Send + 'static,
+        F: Send + Sync + 'static,
+        R: Send + Sync + 'static,
     {
-        let conn = self.pool.get().await?;
-        conn.interact(f).await.expect("deadpool interaction failed")
+        self.circuit_breaker
+            .query(|pool| async move {
+                let conn = pool.0.get().await?;
+                conn.interact(f).await.expect("deadpool interaction failed")
+            })
+            .await
     }
 
     async fn transaction<F, R>(&self, f: F) -> Result<R, Error>
     where
         F: FnOnce(&mut Self::Operations) -> Result<R, Error>,
-        F: Send + 'static,
-        R: Send + 'static,
+        F: Send + Sync + 'static,
+        R: Send + Sync + 'static,
     {
-        let conn = self.pool.get().await?;
-        conn.interact(|conn| conn.transaction(f))
+        self.circuit_breaker
+            .query(|pool| async move {
+                let conn = pool.0.get().await?;
+                conn.interact(|conn| conn.transaction(f))
+                    .await
+                    .expect("deadpool interaction failed")
+            })
             .await
-            .expect("deadpool interaction failed")
     }
 }
 
-pub fn new(pool: PgAsyncPool) -> PgRepo {
-    PgRepo { pool }
+pub fn new(circuit_breaker: CircuitBreaker<PgAsyncPool>) -> PgRepo {
+    PgRepo { circuit_breaker }
 }
 
 impl RepoOperations for PgConnection {

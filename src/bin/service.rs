@@ -2,6 +2,7 @@
 extern crate wavesexchange_log;
 
 use lib::{api, config, db, error::Error, repo};
+use wavesexchange_repos::circuit_breaker::CircuitBreaker;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -9,10 +10,12 @@ async fn main() -> Result<(), Error> {
 
     info!("Starting user-storage service with config: {:?}", config);
 
-    let pg_pool = db::async_pool(&config.pg)?;
-    let storage_repo = repo::postgres::new(pg_pool);
+    let cibrk = CircuitBreaker::builder_from_cfg(&config.cb)
+        .init_fn(move || db::async_pool(&config.pg).unwrap())
+        .build()
+        .unwrap();
+    let storage_repo = repo::postgres::new(cibrk);
 
     api::start(config.api.port, config.api.metrics_port, storage_repo).await;
-
     Ok(())
 }

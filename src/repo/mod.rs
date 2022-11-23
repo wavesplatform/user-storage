@@ -13,14 +13,14 @@ pub trait Repo: Send + Sync + 'static {
     async fn interact<F, R>(&self, f: F) -> Result<R, Error>
     where
         F: FnOnce(&mut Self::Operations) -> Result<R, Error>,
-        F: Send + 'static,
-        R: Send + 'static;
+        F: Send + Sync + 'static,
+        R: Send + Sync + 'static;
 
     async fn transaction<F, R>(&self, f: F) -> Result<R, Error>
     where
         F: FnOnce(&mut Self::Operations) -> Result<R, Error>,
-        F: Send + 'static,
-        R: Send + 'static;
+        F: Send + Sync + 'static,
+        R: Send + Sync + 'static;
 }
 
 pub trait RepoOperations {
