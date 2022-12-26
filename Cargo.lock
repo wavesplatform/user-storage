@@ -1152,17 +1152,6 @@ dependencies = [
 
 [[package]]
 name = "serde_qs"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7715380eec75f029a4ef7de39a9200e0a63823176b759d055b613f5a87df6a6"
-dependencies = [
- "percent-encoding",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "serde_qs"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cac3f1e2ca2fe333923a1ae72caca910b98ed0630bb35ef6f8c8517d6e81afa"
@@ -1641,11 +1630,11 @@ dependencies = [
  "envy",
  "serde",
  "serde_json",
- "serde_qs 0.10.1",
+ "serde_qs",
  "thiserror",
  "tokio",
  "warp",
- "wavesexchange_log 0.5.1 (git+https://github.com/waves-exchange/wavesexchange-rs?tag=wavesexchange_log/0.5.1)",
+ "wavesexchange_log",
  "wavesexchange_warp",
 ]
 
@@ -1783,23 +1772,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "wavesexchange_log"
-version = "0.5.1"
-source = "git+https://github.com/waves-exchange/wavesexchange-rs?tag=wavesexchange_warp/0.14.3#ae16a381348fafdc0ed7e0d33113d9c2e41c6be2"
-dependencies = [
- "chrono",
- "once_cell",
- "slog",
- "slog-async",
- "slog-envlogger",
- "slog-json",
- "slog-term",
-]
-
-[[package]]
 name = "wavesexchange_warp"
-version = "0.14.3"
-source = "git+https://github.com/waves-exchange/wavesexchange-rs?tag=wavesexchange_warp/0.14.3#ae16a381348fafdc0ed7e0d33113d9c2e41c6be2"
+version = "0.14.4"
+source = "git+https://github.com/waves-exchange/wavesexchange-rs?tag=wavesexchange_warp/0.14.4#f0848d001c4b60dde36004d434dd53cadc923311"
 dependencies = [
  "futures",
  "lazy_static",
@@ -1807,9 +1782,9 @@ dependencies = [
  "prometheus",
  "serde",
  "serde_json",
- "serde_qs 0.8.5",
+ "serde_qs",
  "warp",
- "wavesexchange_log 0.5.1 (git+https://github.com/waves-exchange/wavesexchange-rs?tag=wavesexchange_warp/0.14.3)",
+ "wavesexchange_log",
 ]
 
 [[package]]

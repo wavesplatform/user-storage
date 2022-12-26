@@ -1,5 +1,6 @@
 use crate::error::Error;
 use serde::Deserialize;
+use std::fmt;
 
 fn default_pgport() -> u16 {
     5432
@@ -21,7 +22,7 @@ struct ConfigFlat {
     poolsize: u8,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub host: String,
     pub port: u16,
@@ -29,6 +30,17 @@ pub struct Config {
     pub user: String,
     pub password: String,
     pub poolsize: u8,
+}
+
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Intentionally avoid printing password for security reasons
+        write!(
+            f,
+            "Postgres(server={}:{}; database={}; user={}; password=***; poolsize={})",
+            self.host, self.port, self.database, self.user, self.poolsize
+        )
+    }
 }
 
 pub fn load() -> Result<Config, Error> {

@@ -129,8 +129,6 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
 }
 
 mod controllers {
-    //use wavesexchange_log::debug;
-
     use crate::models::UserStorageEntry;
     use crate::repo::RepoOperations;
 
@@ -165,36 +163,36 @@ mod controllers {
         user_addr: String,
         repo: Arc<R>,
     ) -> Result<NullableEntryList, Rejection> {
-        let key_entry_pairs: Vec<(String, Option<Entry>)> = entries
-            .entries
-            .into_iter()
-            .map(|pair| (pair.key, pair.entry))
-            .collect();
+        let key_entry_pairs = entries.entries.iter().map(|pair| (&pair.key, &pair.entry));
 
-        for (key, entry) in &key_entry_pairs {
+        // clone an iterator, not a vector
+        for (key, entry) in key_entry_pairs.clone() {
             if let Some(e) = entry {
                 validate_entry(&key, e)?;
             }
         }
 
         let keys = key_entry_pairs
-            .iter()
+            .clone()
             .map(|pair| pair.0.clone())
             .collect::<Vec<_>>();
 
         let old_entries = get_entries(KeyList { keys }, user_addr.clone(), repo.clone()).await?;
 
         let keys_to_delete = key_entry_pairs
-            .iter()
+            .clone()
             .filter_map(|pair| match pair.1 {
                 Some(_) => None,
                 None => Some(pair.0.clone()),
             })
             .collect::<Vec<_>>();
 
-        let pairs_to_update = key_entry_pairs
-            .into_iter()
-            .filter_map(|pair| pair.1.map(|entry| (pair.0, entry)))
+        let entries_to_update = key_entry_pairs
+            .filter_map(|pair| {
+                pair.1.as_ref().map(|entry| {
+                    UserStorageEntry::from((user_addr.clone(), pair.0.clone(), entry.clone()))
+                })
+            })
             .collect::<Vec<_>>();
 
         repo.transaction(move |ops| {
@@ -202,11 +200,7 @@ mod controllers {
                 ops.mdel(&user_addr, &keys_to_delete)?;
             }
 
-            if !pairs_to_update.is_empty() {
-                let entries_to_update = pairs_to_update
-                    .into_iter()
-                    .map(|(key, entry)| UserStorageEntry::from((user_addr.clone(), key, entry)))
-                    .collect::<Vec<_>>();
+            if !entries_to_update.is_empty() {
                 ops.mset(&entries_to_update)?;
             }
             Ok(())
@@ -253,7 +247,7 @@ mod controllers {
     ) -> Result<Option<Entry>, Rejection> {
         validate_entry(&key, &entry)?;
         let entry = repo
-            .interact(move |ops| {
+            .transaction(move |ops| {
                 let old_entry = ops.get(&user_addr, &key)?.map(Entry::from);
 
                 let entry = UserStorageEntry::from((user_addr.clone(), key, entry));
