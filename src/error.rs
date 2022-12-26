@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use warp::reject::Reject;
 
 #[derive(Debug, thiserror::Error)]
@@ -6,7 +7,7 @@ pub enum Error {
     LoadConfigFailed(#[from] envy::Error),
 
     #[error("ValidationError: {0}")]
-    ValidationError(String, Option<std::collections::HashMap<String, String>>),
+    ValidationError(String, Option<HashMap<String, String>>),
 
     #[error("KeyNotFound: {0}")]
     KeyNotFound(String),

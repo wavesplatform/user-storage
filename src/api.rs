@@ -2,7 +2,6 @@ use crate::error::Error;
 use crate::models::dto::{Entry, KeyEntryList, KeyList, NullableEntryList};
 use crate::repo::Repo;
 use serde::Serialize;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use warp::{
@@ -37,16 +36,7 @@ pub async fn start(port: u16, metrics_port: u16, user_storage: impl Repo) {
 
     let qs_config = serde_qs::Config::new(5, false);
     let path_prefix = warp::path!("storage" / ..);
-    let user_addr = warp::header::<String>("Authorization").and_then(|jwt: String| async move {
-        jwt.split('.')
-            .nth(1)
-            .and_then(|s: &str| base64::decode(s).ok())
-            .and_then(|claim: Vec<u8>| serde_json::from_slice::<Value>(&claim).ok())
-            .and_then(|val: Value| val.get("a").and_then(|a| a.as_str().map(|s| s.to_owned())))
-            .ok_or_else(|| {
-                reject::custom(Error::ValidationError("Authorization".to_string(), None))
-            })
-    });
+    let user_addr = warp::header::<String>("X-User-Address");
 
     let with_user_storage = {
         let storage = Arc::new(user_storage);
