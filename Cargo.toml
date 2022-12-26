@@ -1,6 +1,6 @@
 [package]
 name = "user-storage"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Artem Sidorenko <kronos44_0@mail.ru>"]
 
