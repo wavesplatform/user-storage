@@ -1,0 +1,25 @@
+include:
+  - project: 'we-private/backend/common-ci'
+    ref: ci
+    file: 'ci-functions/build_image.yml'
+  - project: 'we-private/backend/common-ci'
+    ref: ci
+    file: 'ci-functions/deploy_stages.yml'
+  - project: 'we-private/backend/common-ci'
+    ref: ci
+    file: 'ci-functions/migrations.yml'
+
+variables:
+  APP_NAME: user-storage
+  DB_NAME: user_storage
+  MIGRATION_INIT_CMD: /app/migrate init
+  MIGRATION_UP_CMD: /app/migrate up
+  MIGRATION_DOWN_CMD: /app/migrate down
+
+stages:
+  - "Build docker image"
+  - "Deploy to stage/test/dev"
+  - "Migrations-INIT"
+  - "Migrations-UP"
+  - "Migrations-DOWN"
+
