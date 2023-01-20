@@ -29,10 +29,9 @@ pub fn async_pool(config: &Config) -> Result<PgAsyncPool, Error> {
 }
 
 impl FallibleDataSource for PgAsyncPool {
-    const REINIT_ON_FAIL: bool = true;
     type Error = Error;
 
-    fn is_countable_err(err: &Self::Error) -> bool {
+    fn is_countable_err(_err: &Self::Error) -> bool {
         //err.to_string().contains("no connection to the server")
         true
     }

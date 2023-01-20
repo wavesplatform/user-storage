@@ -10,11 +10,11 @@ async fn main() -> Result<(), Error> {
 
     info!("Starting user-storage service with config: {:?}", config);
 
-    let cibrk = CircuitBreaker::builder_from_cfg(&config.cb)
-        .init_fn(move || db::async_pool(&config.pg).unwrap())
+    let cbrk = CircuitBreaker::builder_from_cfg(&config.cb)
+        .with_init_fn(move || db::async_pool(&config.pg))
         .build()
         .unwrap();
-    let storage_repo = repo::postgres::new(cibrk);
+    let storage_repo = repo::postgres::new(cbrk);
 
     api::start(config.api.port, config.api.metrics_port, storage_repo).await;
     Ok(())
